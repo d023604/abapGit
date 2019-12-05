@@ -263,17 +263,22 @@ RepoOverViewHelper.prototype.onPageLoad = function() {
 function StageHelper(params) {
   this.pageSeed        = params.seed;
   this.formAction      = params.formAction;
-  this.choiseCount     = 0;
+  this.user            = params.user;
+  this.selectedCount   = 0;
+  this.filteredCount   = 0;
   this.lastFilterValue = "";
 
   // DOM nodes
   this.dom = {
-    stageTab:     document.getElementById(params.ids.stageTab),
-    commitBtn:    document.getElementById(params.ids.commitBtn),
-    commitAllBtn: document.getElementById(params.ids.commitAllBtn),
-    objectSearch: document.getElementById(params.ids.objectSearch),
-    fileCounter:  document.getElementById(params.ids.fileCounter)
+    stageTab:          document.getElementById(params.ids.stageTab),
+    commitAllBtn:      document.getElementById(params.ids.commitAllBtn),
+    commitSelectedBtn: document.getElementById(params.ids.commitSelectedBtn),
+    commitFilteredBtn: document.getElementById(params.ids.commitFilteredBtn),
+    objectSearch:      document.getElementById(params.ids.objectSearch),
+    selectedCounter:   null,
+    filteredCounter:   null,
   };
+  this.findCounters();
 
   // Table columns (autodetection)
   this.colIndex      = this.detectColumns();
@@ -296,16 +301,46 @@ function StageHelper(params) {
   };
 
   this.setHooks();
+  if (this.user) this.injectFilterMe();
+  Hotkeys.addHotkeyToHelpSheet("^Enter", "Commit");
+  this.dom.objectSearch.focus();
 }
+
+StageHelper.prototype.findCounters = function() {
+  this.dom.selectedCounter = this.dom.commitSelectedBtn.querySelector("span.counter");
+  this.dom.filteredCounter = this.dom.commitFilteredBtn.querySelector("span.counter");
+};
+
+StageHelper.prototype.injectFilterMe = function() {
+  var tabFirstHead = this.dom.stageTab.tHead.rows[0];
+  if (!tabFirstHead || tabFirstHead.className !== "local") {
+    return; // for the case only "remove part" is displayed
+  }
+  var changedByHead = tabFirstHead.cells[this.colIndex.user];
+  changedByHead.innerText = changedByHead.innerText + " (";
+  var a = document.createElement("A");
+  a.appendChild(document.createTextNode("me"));
+  a.onclick = this.onFilterMe.bind(this);
+  a.href = "#";
+  changedByHead.appendChild(a);
+  changedByHead.appendChild(document.createTextNode(")"));
+};
+
+StageHelper.prototype.onFilterMe = function() {
+  this.dom.objectSearch.value = this.user;
+  this.onFilter({ type: "keypress", which: 13, target: this.dom.objectSearch });
+};
 
 // Hook global click listener on table, load/unload actions
 StageHelper.prototype.setHooks = function() {
-  this.dom.stageTab.onclick        = this.onTableClick.bind(this);
-  this.dom.commitBtn.onclick       = this.submit.bind(this);
-  this.dom.objectSearch.oninput    = this.onFilter.bind(this);
-  this.dom.objectSearch.onkeypress = this.onFilter.bind(this);
-  window.onbeforeunload            = this.onPageUnload.bind(this);
-  window.onload                    = this.onPageLoad.bind(this);
+  window.onkeypress                  = this.onCtrlEnter.bind(this);
+  this.dom.stageTab.onclick          = this.onTableClick.bind(this);
+  this.dom.commitSelectedBtn.onclick = this.submit.bind(this);
+  this.dom.commitFilteredBtn.onclick = this.submitVisible.bind(this);
+  this.dom.objectSearch.oninput      = this.onFilter.bind(this);
+  this.dom.objectSearch.onkeypress   = this.onFilter.bind(this);
+  window.onbeforeunload              = this.onPageUnload.bind(this);
+  window.onload                      = this.onPageLoad.bind(this);
 };
 
 // Detect column index
@@ -379,11 +414,22 @@ StageHelper.prototype.onTableClick = function (event) {
   this.updateMenu();
 };
 
+StageHelper.prototype.onCtrlEnter = function (e) {
+  if (e.ctrlKey && (e.which === 10 || e.key === "Enter")){
+    var clickMap = {
+      "default":  this.dom.commitAllBtn,
+      "selected": this.dom.commitSelectedBtn,
+      "filtered": this.dom.commitFilteredBtn
+    };
+    clickMap[this.calculateActiveCommitCommand()].click();
+  }
+};
+
 // Search object
 StageHelper.prototype.onFilter = function (e) {
   if ( // Enter hit or clear, IE SUCKS !
     e.type === "input" && !e.target.value && this.lastFilterValue
-    || e.type === "keypress" && e.which === 13 ) {
+    || e.type === "keypress" && (e.which === 13 || e.key === "Enter") && !e.ctrlKey ) {
 
     this.applyFilterValue(e.target.value);
     submitSapeventForm({ filterValue: e.target.value }, "stage_filter", "post");
@@ -393,7 +439,8 @@ StageHelper.prototype.onFilter = function (e) {
 StageHelper.prototype.applyFilterValue = function(sFilterValue) {
 
   this.lastFilterValue = sFilterValue;
-  this.iterateStageTab(true, this.applyFilterToRow, sFilterValue);
+  this.filteredCount = this.iterateStageTab(true, this.applyFilterToRow, sFilterValue);
+  this.updateMenu();
 
 };
 
@@ -427,6 +474,7 @@ StageHelper.prototype.applyFilterToRow = function (row, filter) {
   for (var j = targets.length - 1; j >= 0; j--) {
     if (targets[j].isChanged) targets[j].elem.innerHTML = targets[j].newHtml;
   }
+  return isVisible ? 1 : 0;
 };
 
 // Get how status should affect object counter
@@ -451,7 +499,7 @@ StageHelper.prototype.updateRow = function (row, newStatus) {
     this.updateRowCommand(row, newStatus); // For initial run
   }
 
-  this.choiseCount += this.getStatusImpact(newStatus) - this.getStatusImpact(oldStatus);
+  this.selectedCount += this.getStatusImpact(newStatus) - this.getStatusImpact(oldStatus);
 };
 
 // Update Status cell (render set of commands)
@@ -476,15 +524,36 @@ StageHelper.prototype.updateRowCommand = function (row, status) {
   }
 };
 
+StageHelper.prototype.calculateActiveCommitCommand = function () {
+  var active;
+  if (this.selectedCount > 0) {
+    active = "selected";
+  } else if (this.lastFilterValue) {
+    active = "filtered";
+  } else {
+    active = "default";
+  }
+  return active;
+};
+
 // Update menu items visibility
 StageHelper.prototype.updateMenu = function () {
-  this.dom.commitBtn.style.display    = (this.choiseCount > 0) ? ""     : "none";
-  this.dom.commitAllBtn.style.display = (this.choiseCount > 0) ? "none" : "";
-  this.dom.fileCounter.innerHTML      = this.choiseCount.toString();
+  var display = this.calculateActiveCommitCommand();
+  if (display === "selected") this.dom.selectedCounter.innerText = this.selectedCount.toString();
+  if (display === "filtered") this.dom.filteredCounter.innerText = this.filteredCount.toString();
+
+  this.dom.commitAllBtn.style.display      = display === "default" ? "" : "none";
+  this.dom.commitSelectedBtn.style.display = display === "selected" ? "" : "none";
+  this.dom.commitFilteredBtn.style.display = display === "filtered" ? "" : "none";
 };
 
 // Submit stage state to the server
 StageHelper.prototype.submit = function () {
+  submitSapeventForm(this.collectData(), this.formAction);
+};
+
+StageHelper.prototype.submitVisible = function () {
+  this.markVisiblesAsAdded();
   submitSapeventForm(this.collectData(), this.formAction);
 };
 
@@ -497,10 +566,22 @@ StageHelper.prototype.collectData = function () {
   return data;
 };
 
+StageHelper.prototype.markVisiblesAsAdded = function () {
+  this.iterateStageTab(false, function (row) {
+    // TODO refacotr, unify updateRow logic
+    if (row.style.display === "" && row.className === "local") { // visible
+      this.updateRow(row, this.STATUS.add);
+    } else {
+      this.updateRow(row, this.STATUS.reset);
+    }
+  });
+};
+
 // Table iteration helper
 StageHelper.prototype.iterateStageTab = function (changeMode, cb /*, ...*/) {
   var restArgs = Array.prototype.slice.call(arguments, 2);
   var table    = this.dom.stageTab;
+  var retTotal = 0;
 
   if (changeMode) {
     var scrollOffset = window.pageYOffset;
@@ -511,7 +592,8 @@ StageHelper.prototype.iterateStageTab = function (changeMode, cb /*, ...*/) {
     var tbody = table.tBodies[b];
     for (var r = 0, rN = tbody.rows.length; r < rN; r++) {
       var args = [tbody.rows[r]].concat(restArgs);
-      cb.apply(this, args); // callback
+      var retVal = cb.apply(this, args); // callback
+      if (typeof retVal === "number") retTotal += retVal;
     }
   }
 
@@ -519,6 +601,8 @@ StageHelper.prototype.iterateStageTab = function (changeMode, cb /*, ...*/) {
     this.dom.stageTab.style.display = "";
     window.scrollTo(0, scrollOffset);
   }
+
+  return retTotal;
 };
 
 /**********************************************************
@@ -686,6 +770,133 @@ function addMarginBottom(){
   document.getElementsByTagName("body")[0].style.marginBottom = screen.height + "px";
 }
 
+
+/**********************************************************
+ * Diff page logic of column selection
+ **********************************************************/
+
+function DiffColumnSelection() {
+  this.selectedColumnIdx = -1;
+  this.lineNumColumnIdx = -1;
+  //https://stackoverflow.com/questions/2749244/javascript-setinterval-and-this-solution
+  document.addEventListener("mousedown", this.mousedownEventListener.bind(this));
+  document.addEventListener("copy", this.copyEventListener.bind(this));
+}
+
+DiffColumnSelection.prototype.mousedownEventListener = function(e) {
+  // Select text in a column of an HTML table and copy to clipboard (in DIFF view)
+  // (https://stackoverflow.com/questions/6619805/select-text-in-a-column-of-an-html-table)
+  // Process mousedown event for all TD elements -> apply CSS class at TABLE level.
+  // (https://stackoverflow.com/questions/40956717/how-to-addeventlistener-to-multiple-elements-in-a-single-line)
+  var unifiedLineNumColumnIdx = 0;
+  var unifiedCodeColumnIdx = 3;
+  var splitLineNumLeftColumnIdx = 0;
+  var splitCodeLeftColumnIdx = 2;
+  var splitLineNumRightColumnIdx = 3;
+  var splitCodeRightColumnIdx = 5;
+
+  if (e.button !== 0) return; // function is only valid for left button, not right button
+
+  var td = e.target;
+  while (td != undefined && td.tagName != "TD" && td.tagName != "TBODY") td = td.parentElement;
+  if (td == undefined) return;
+  var table = td.parentElement.parentElement;
+
+  var patchColumnCount = 0;
+  if (td.parentElement.cells[0].classList.contains("patch")) {
+    patchColumnCount = 1;
+  }
+
+  if (td.classList.contains("diff_left")) {
+    table.classList.remove("diff_select_right");
+    table.classList.add("diff_select_left");
+    if ( window.getSelection() && this.selectedColumnIdx != splitCodeLeftColumnIdx + patchColumnCount ) {
+      // De-select to avoid effect of dragging selection in case the right column was first selected
+      if (document.body.createTextRange) { // All IE but Edge
+        // document.getSelection().removeAllRanges() may trigger error
+        // so use this code which is equivalent but does not fail
+        // (https://stackoverflow.com/questions/22914075/javascript-error-800a025e-using-range-selector)
+        range = document.body.createTextRange();
+        range.collapse();
+        range.select();
+      } else {
+        document.getSelection().removeAllRanges();
+      }}
+    this.selectedColumnIdx = splitCodeLeftColumnIdx + patchColumnCount;
+    this.lineNumColumnIdx = splitLineNumLeftColumnIdx + patchColumnCount;
+
+  } else if (td.classList.contains("diff_right")) {
+    table.classList.remove("diff_select_left");
+    table.classList.add("diff_select_right");
+    if ( window.getSelection() && this.selectedColumnIdx != splitCodeRightColumnIdx + patchColumnCount ) {
+      if (document.body.createTextRange) { // All IE but Edge
+        // document.getSelection().removeAllRanges() may trigger error
+        // so use this code which is equivalent but does not fail
+        // (https://stackoverflow.com/questions/22914075/javascript-error-800a025e-using-range-selector)
+        var range = document.body.createTextRange();
+        range.collapse();
+        range.select();
+      } else {
+        document.getSelection().removeAllRanges();
+      }}
+    this.selectedColumnIdx = splitCodeRightColumnIdx + patchColumnCount;
+    this.lineNumColumnIdx = splitLineNumRightColumnIdx + patchColumnCount;
+
+  } else if (td.classList.contains("diff_unified")) {
+    this.selectedColumnIdx = unifiedCodeColumnIdx;
+    this.lineNumColumnIdx = unifiedLineNumColumnIdx;
+
+  } else {
+    this.selectedColumnIdx = -1;
+    this.lineNumColumnIdx = -1;
+  }
+};
+
+DiffColumnSelection.prototype.copyEventListener = function(e) {
+  // Select text in a column of an HTML table and copy to clipboard (in DIFF view)
+  // (https://stackoverflow.com/questions/6619805/select-text-in-a-column-of-an-html-table)
+  var td = e.target;
+  while (td != undefined && td.tagName != "TD" && td.tagName != "TBODY") td = td.parentElement;
+  if(td != undefined){
+    // Use window.clipboardData instead of e.clipboardData
+    // (https://stackoverflow.com/questions/23470958/ie-10-copy-paste-issue)
+    var clipboardData = ( e.clipboardData == undefined ? window.clipboardData : e.clipboardData );
+    var text = this.getSelectedText();
+    clipboardData.setData("text", text);
+    e.preventDefault();
+  }
+};
+
+DiffColumnSelection.prototype.getSelectedText = function() {
+  // Select text in a column of an HTML table and copy to clipboard (in DIFF view)
+  // (https://stackoverflow.com/questions/6619805/select-text-in-a-column-of-an-html-table)
+  var sel = window.getSelection(),
+    range = sel.getRangeAt(0),
+    doc = range.cloneContents(),
+    nodes = doc.querySelectorAll("tr"),
+    text = "";
+  if (nodes.length === 0) {
+    text = doc.textContent;
+  } else {
+    var newline = "",
+      realThis = this;
+    [].forEach.call(nodes, function(tr, i) {
+      var cellIdx = ( i==0 ? 0 : realThis.selectedColumnIdx );
+      if (tr.cells.length > cellIdx) {
+        var tdSelected = tr.cells[cellIdx];
+        var tdLineNum = tr.cells[realThis.lineNumColumnIdx];
+        // copy is interesting for remote code, don't copy lines which exist only locally
+        if (i==0 || tdLineNum.getAttribute("line-num")!="") {
+          text += newline + tdSelected.textContent;
+          // special processing for TD tag which sometimes contains newline
+          // (expl: /src/ui/zabapgit_js_common.w3mi.data.js) so don't add newline again in that case.
+          var lastChar = tdSelected.textContent[ tdSelected.textContent.length - 1 ];
+          if ( lastChar == "\n" ) newline = "";
+          else newline = "\n";
+        }}});}
+  return text;
+};
+
 /**********************************************************
  * Other functions
  **********************************************************/
@@ -827,8 +1038,12 @@ function LinkHints(linkHintHotKey){
 }
 
 LinkHints.prototype.getHintStartValue = function(targetsCount){
-  // if we have 321 tooltips we start from 100
-  var maxHintStringLength = targetsCount.toString().length;
+  // e.g. if we have 89 tooltips we start from 10
+  //      if we have 90 tooltips we start from 100
+  //      if we have 900 tooltips we start from 1000
+  var
+    baseLength = Math.pow(10, targetsCount.toString().length - 1),
+    maxHintStringLength = (targetsCount + baseLength).toString().length;
   return Math.pow(10, maxHintStringLength - 1);
 };
 
@@ -989,6 +1204,11 @@ function Hotkeys(oKeyMap){
 
     var action = this.oKeyMap[sKey];
 
+    // add a tooltip/title with the hotkey, currently only sapevents are supported
+    [].slice.call(document.querySelectorAll("a[href^='sapevent:" + action + "']")).forEach(function(elAnchor) {
+      elAnchor.title = elAnchor.title + " [" + sKey + "]";
+    });
+
     // We replace the actions with callback functions to unify
     // the hotkey execution
     this.oKeyMap[sKey] = function(oEvent) {
@@ -1002,6 +1222,7 @@ function Hotkeys(oKeyMap){
       // Or a global function
       if (window[action]) {
         window[action].call(this);
+        return;
       }
 
       // Or a SAP event

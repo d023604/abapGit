@@ -154,11 +154,6 @@ INTERFACE zif_abapgit_definitions
   TYPES:
     tt_repo_files TYPE STANDARD TABLE OF ty_repo_file WITH DEFAULT KEY .
   TYPES:
-    BEGIN OF ty_stage_files,
-      local  TYPE zif_abapgit_definitions=>ty_files_item_tt,
-      remote TYPE zif_abapgit_definitions=>ty_files_tt,
-    END OF ty_stage_files .
-  TYPES:
     ty_chmod TYPE c LENGTH 6 .
   TYPES:
     BEGIN OF ty_object,
@@ -199,6 +194,14 @@ INTERFACE zif_abapgit_definitions
     END OF ty_result .
   TYPES:
     ty_results_tt TYPE STANDARD TABLE OF ty_result WITH DEFAULT KEY .
+  TYPES:
+    ty_results_ts_path TYPE HASHED TABLE OF ty_result WITH UNIQUE KEY path filename .
+  TYPES:
+    BEGIN OF ty_stage_files,
+      local  TYPE zif_abapgit_definitions=>ty_files_item_tt,
+      remote TYPE zif_abapgit_definitions=>ty_files_tt,
+      status TYPE zif_abapgit_definitions=>ty_results_ts_path,
+    END OF ty_stage_files .
   TYPES:
     ty_sval_tt TYPE STANDARD TABLE OF sval WITH DEFAULT KEY .
   TYPES:
@@ -402,7 +405,7 @@ INTERFACE zif_abapgit_definitions
   CONSTANTS c_english TYPE spras VALUE 'E' ##NO_TEXT.
   CONSTANTS c_root_dir TYPE string VALUE '/' ##NO_TEXT.
   CONSTANTS c_dot_abapgit TYPE string VALUE '.abapgit.xml' ##NO_TEXT.
-  CONSTANTS c_author_regex TYPE string VALUE '^([\\\w\s\.\*\,\#@%\-_1-9\(\) ]+) <(.*)> (\d{10})\s?.\d{4}$' ##NO_TEXT.
+  CONSTANTS c_author_regex TYPE string VALUE '^(.+) <(.*)> (\d{10})\s?.\d{4}$' ##NO_TEXT.
   CONSTANTS:
     BEGIN OF c_action,
       repo_refresh                  TYPE string VALUE 'repo_refresh',

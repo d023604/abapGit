@@ -56,7 +56,26 @@
     "globalMacros": []
   },
   "rules": {
-    "7bit_ascii": {},
+    "check_no_handler_pragma": true,
+    "newline_between_methods": false,    
+    "chain_mainly_declarations": true,
+    "check_abstract": true,
+    "check_text_elements": true,
+    "type_begin_single_include": true,
+    "types_naming": false,
+    "7bit_ascii": {
+      "enabled": true,
+      "exclude": ["zcl_abapgit_utils.clas.testclasses.abap"]
+    },
+    "abapdoc": {
+      "enabled": false,
+      "checkLocal": false
+    },
+    "check_ddic": true,
+    "check_include": true,
+    "form_no_dash": {
+      "enabled": false
+    },
     "allowed_object_types": {
       "allowed": [
         "PROG",
@@ -80,7 +99,7 @@
     "begin_end_names": {},
     "breakpoint": {},
     "check_transformation_exists": {},
-    "check_variables": {},
+    "check_syntax": {},
     "class_attribute_names": {
       "ignoreExceptions": true,
       "statics": "^G._.*$",
@@ -136,7 +155,8 @@
       "ignoreGlobalInterface": false
     },
     "inline_data_old_versions": {},
-    "keywords_upper": {
+    "keyword_case": {
+      "style": "upper",
       "ignoreExceptions": true,
       "ignoreLowerClassImplmentationStatement": true,
       "ignoreGlobalClassDefinition": false,
@@ -165,7 +185,9 @@
       "enabled": false
     },
     "method_length": {
-      "statements": 100
+      "statements": 100,
+      "ignoreTestClasses": false,
+      "errorWhenEmpty": false
     },
     "method_parameter_names": {
       "ignoreExceptions": true,
@@ -182,7 +204,7 @@
     "nesting": {
       "depth": 5
     },
-    "no_public_attributes": {},
+    "no_public_attributes": false,
     "object_naming": {
       "clas": "^ZC(L|X)\\_ABAPGIT\\_",
       "intf": "^ZIF\\_ABAPGIT\\_",
@@ -207,7 +229,8 @@
       "multiply": true,
       "move": true,
       "divide": true,
-      "requested": true
+      "requested": true,
+      "occurs": true
     },
     "parser_error": {},
     "preferred_compare_operator": {
