@@ -28,7 +28,7 @@ CLASS ZCL_ABAPGIT_OBJECT_CHDO IMPLEMENTATION.
 
   METHOD constructor.
 
-    super->constructor( is_item  =  is_item  iv_language = iv_language ).
+    super->constructor( is_item =  is_item  iv_language = iv_language ).
 
     " Conversion to Change Document Object
     me->mv_change_doc_object = is_item-obj_name.
